@@ -3,6 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+<script>
+/* Lightweight family PIN gate. The real PIN is not stored here, only its SHA-256 hash. */
+(() => {
+  const KEY = 'fruitchop.pinUnlocked.v1';
+  try { if (localStorage.getItem(KEY) !== '1') document.documentElement.classList.add('pin-locked'); }
+  catch (e) { document.documentElement.classList.add('pin-locked'); }
+})();
+</script>
 <!-- Install-as-app extras. They only do anything when manifest.webmanifest, sw.js and icons/ are hosted next to this file. -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -38,6 +47,27 @@ body{
   /* Stop iPad text selection, callout bubbles and tap flashes while little fingers mash the screen */
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
 }
+/* ---- Lightweight PIN gate for the hosted copy ---- */
+.pin-gate{
+  display:none;position:fixed;inset:0;z-index:99999;box-sizing:border-box;padding:24px;
+  align-items:center;justify-content:center;background:linear-gradient(#74c8f2,#d6f1fb);
+}
+.pin-locked .pin-gate{display:flex}
+.pin-locked #game{visibility:hidden}
+.pin-card{
+  width:min(420px,100%);box-sizing:border-box;display:grid;gap:18px;justify-items:center;text-align:center;
+  padding:clamp(26px,6vw,42px);background:var(--paper);border:4px solid var(--ink);border-radius:30px;box-shadow:0 10px 0 var(--ink);
+}
+.pin-card h1{margin:0;font-family:var(--font-display);font-size:clamp(36px,10vw,58px);font-weight:400;line-height:1;color:var(--ink)}
+.pin-card p{margin:0;font-weight:700;color:var(--ink-soft)}
+.pin-card input{
+  width:7ch;box-sizing:border-box;padding:10px 12px;text-align:center;font:800 30px var(--font-body);letter-spacing:.18em;
+  color:var(--ink);background:#fff;border:4px solid var(--ink);border-radius:16px;outline:none;-webkit-user-select:text;user-select:text;
+}
+.pin-card input:focus{outline:4px solid var(--sun);outline-offset:3px}
+.pin-error{min-height:1.4em;color:var(--berry)!important}
+.pin-card.shake{animation:pinShake .28s ease-out}
+@keyframes pinShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
 #game{position:relative;width:100%;height:100%;overflow:hidden;touch-action:none}
 #stage{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
 
@@ -151,6 +181,71 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
 </style>
 </head>
 <body>
+<div class="pin-gate" id="pinGate" role="dialog" aria-modal="true" aria-labelledby="pinTitle">
+  <div class="pin-card" id="pinCard">
+    <h1 id="pinTitle">Fruit Chop</h1>
+    <p>Enter the family PIN to play.</p>
+    <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="4 digit PIN">
+    <button class="btn big" id="pinUnlockBtn" type="button">Unlock</button>
+    <p class="pin-error" id="pinError" aria-live="polite"></p>
+  </div>
+</div>
+<script>
+(() => {
+  const KEY = 'fruitchop.pinUnlocked.v1';
+  const PIN_HASH = '28de56db50a1c9310f4eb478927dcc471f90a95c5d2c0eac1a3eb6f278987a29';
+  const locked = document.documentElement.classList.contains('pin-locked');
+  const gate = document.getElementById('pinGate');
+  const card = document.getElementById('pinCard');
+  const input = document.getElementById('pinInput');
+  const button = document.getElementById('pinUnlockBtn');
+  const error = document.getElementById('pinError');
+
+  if (!locked) { gate.hidden = true; }
+  else { setTimeout(() => input.focus(), 50); }
+
+  const sha256 = async value => {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  async function unlock() {
+    const pin = input.value.replace(/\D/g, '');
+    input.value = pin;
+    if (pin.length !== 4) { error.textContent = 'Enter the 4 digit PIN.'; return; }
+    button.disabled = true; error.textContent = '';
+    try {
+      if (await sha256(pin) === PIN_HASH) {
+        try { localStorage.setItem(KEY, '1'); } catch (e) {}
+        document.documentElement.classList.remove('pin-locked');
+        gate.hidden = true;
+        input.value = '';
+        return;
+      }
+    } catch (e) {
+      error.textContent = 'PIN check is unavailable in this browser.';
+      button.disabled = false;
+      return;
+    }
+    error.textContent = 'Wrong PIN.';
+    card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
+    input.select(); button.disabled = false;
+  }
+
+  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 4); error.textContent = ''; });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
+  button.addEventListener('click', unlock);
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const lockButton = document.getElementById('lockDeviceBtn');
+    if (lockButton) lockButton.addEventListener('click', () => {
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      location.reload();
+    });
+  });
+})();
+</script>
 <div id="game">
   <canvas id="stage" role="img" aria-label="Fruit tossed up over a sunny backyard. Swipe or tap fruit to chop it."></canvas>
   <div class="words" id="words" aria-hidden="true"></div>
@@ -204,12 +299,32 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
         </div>
         <p class="note">Picking a time restarts the countdown. When it runs out the fruit stops, and a grown-up holds a button to play again.</p>
       </div>
+      <div class="group" id="backgroundGroup" hidden>
+        <div class="label" id="backgroundLabel">Background</div>
+        <div class="row" id="backgroundSeg" role="group" aria-labelledby="backgroundLabel">
+          <button class="btn sm" type="button" data-bg="random">Random</button>
+          <button class="btn sm" type="button" data-bg="original">Original yard</button>
+          <button class="btn sm" type="button" data-bg="bedroom">Bedroom</button>
+          <button class="btn sm" type="button" data-bg="kitchen">Kitchen</button>
+          <button class="btn sm" type="button" data-bg="livingroom">Living room</button>
+          <button class="btn sm" type="button" data-bg="backyard">Backyard</button>
+        </div>
+        <p class="note">Random cycles through every background, including the original yard, without repeating the same one twice in a row. Missing images fall back to the original yard.</p>
+      </div>
+      <div class="group">
+        <div class="label" id="dogStyleLabel">Dog</div>
+        <div class="row" role="group" aria-labelledby="dogStyleLabel">
+          <button class="btn sm" id="blueDogBtn" type="button" aria-pressed="false">Blue Dog: Off</button>
+        </div>
+        <p class="note">On uses the PNG dogs and reveals the background choices. Off uses the original drawn dog and original yard. This choice is remembered on this device.</p>
+      </div>
       <div class="group">
         <div class="row">
           <button class="btn sm" id="soundBtn" type="button" aria-pressed="true">Sound is on</button>
           <button class="btn sm" id="resetBtn" type="button">Set score to 0</button>
           <button class="btn sm" id="fullBtn" type="button" hidden>Full screen</button>
           <button class="btn sm" id="installBtn" type="button">Install app</button>
+          <button class="btn sm" id="lockDeviceBtn" type="button">Lock this device</button>
         </div>
         <p class="note" id="installNote" hidden></p>
       </div>
@@ -224,7 +339,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
 'use strict';
 
 /* Version: CalVer + daily build number. Bump on every code change. Shown in the grown-ups menu. */
-const VERSION = 'v2026.10.04.03';
+const VERSION = 'v2026.10.04.11';
 
 /* ============================================================
    TUNING: the knobs worth touching if the game feels too fast
@@ -246,7 +361,9 @@ const TUNE = {
   messSeconds: 10,   // how long a juice stain takes to fade away
   messMax: 60,       // most stains kept at once; past this the oldest fade early (keeps old iPads smooth)
   rainbowMin: 6,     // a rainbow melon (the big harmless exploder) arrives every 6 to 10 tosses
-  rainbowMax: 10     // set rainbowMax to 0 to switch the rainbow melon off
+  rainbowMax: 10,    // set rainbowMax to 0 to switch the rainbow melon off
+  dogMin: 20,        // the surprise pup visits every 20 to 45 seconds
+  dogMax: 45         // set dogMax to 0 to keep the dog away
 };
 
 const TAU = Math.PI * 2;
@@ -268,6 +385,7 @@ const pieces = [];   // everything in the air: whole fruit and the bits they get
 const splats = [];   // juice stains left on the scene, oldest first
 const drops = [], stars = [], flashes = [], clouds = [];
 let shake = 0;       // seconds of screen wobble left after a rainbow melon bursts
+let dog = null, dogTimer = 10;   // the surprise pup (null while he is away) and seconds until his next visit
 const trails = new Map();   // one swipe trail per finger (or the mouse), keyed by pointerId
 
 /* ============================================================
@@ -519,9 +637,110 @@ function seeded(a) {   // tiny repeatable random so the yard looks the same afte
 }
 function sunSpot() { return { x: W * 0.74, y: H * 0.2, r: Math.min(W, H) * 0.085 }; }
 
+// Blue Dog enhanced-art mode defaults to On on a fresh browser/device.
+// After the user changes it, that preference is remembered locally.
+let blueDogMode = true;
+try {
+  const savedBlueDog = localStorage.getItem('fruitchop.blueDog');
+  if (savedBlueDog !== null) blueDogMode = savedBlueDog === 'on';
+} catch (e) {}
+
+// Optional room/backyard artwork. Keep these files beside index.html on GitHub Pages.
+// Random mode includes the original canvas-drawn yard as a fifth background.
+// On a fresh browser/device, the very first page load starts on one of the PNG backgrounds instead of Original.
+const BACKGROUND_ART = {
+  bedroom:    { file: 'bedroombackground.png', img: null, ready: false },
+  kitchen:    { file: 'Kitchenbackground.png', img: null, ready: false },
+  livingroom: { file: 'Livingroom.png',        img: null, ready: false },
+  backyard:   { file: 'backyardBackground.png', img: null, ready: false }
+};
+const BACKGROUND_KEYS = ['original', 'bedroom', 'kitchen', 'livingroom', 'backyard'];
+const PNG_BACKGROUND_KEYS = ['bedroom', 'kitchen', 'livingroom', 'backyard'];
+let backgroundMode = 'random';
+let currentBackgroundKey = 'original';
+let lastBackgroundKey = null;
+let backgroundBag = [];
+let hasSavedBackground = false;
+try {
+  const savedBackground = localStorage.getItem('fruitchop.background');
+  if (savedBackground && ['random', ...BACKGROUND_KEYS].includes(savedBackground)) {
+    backgroundMode = savedBackground;
+    hasSavedBackground = true;
+  }
+} catch (e) {}
+
+let backgroundAssetsStarted = false;
+function loadBackgroundArt(key, art) {
+  if (art.img) return;
+  const img = new Image(); art.img = img; img.decoding = 'async';
+  img.onload = () => { art.ready = true; if (blueDogMode && currentBackgroundKey === key && W > 0) paintBackdrop(); };
+  img.onerror = () => { art.ready = false; if (blueDogMode && currentBackgroundKey === key && W > 0) paintBackdrop(); };
+  img.src = art.file;
+}
+function ensureBackgroundAssets() {
+  if (backgroundAssetsStarted) return;
+  backgroundAssetsStarted = true;
+  for (const [key, art] of Object.entries(BACKGROUND_ART)) loadBackgroundArt(key, art);
+}
+
+function backgroundArtReady(key) {
+  if (key === 'original') return true;
+  const art = BACKGROUND_ART[key];
+  return !!(art && art.ready && art.img && art.img.complete && art.img.naturalWidth > 0);
+}
+function backgroundUsesOriginal() { return currentBackgroundKey === 'original' || !backgroundArtReady(currentBackgroundKey); }
+function drawCoverImage(c, img, w, h) {
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const sw = w / scale, sh = h / scale;
+  const sx = (img.naturalWidth - sw) / 2, sy = (img.naturalHeight - sh) / 2;
+  c.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+}
+function refillBackgroundBag() {
+  backgroundBag = BACKGROUND_KEYS.slice();
+  for (let i = backgroundBag.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [backgroundBag[i], backgroundBag[j]] = [backgroundBag[j], backgroundBag[i]];
+  }
+  if (backgroundBag.length > 1 && backgroundBag[0] === lastBackgroundKey) {
+    const j = 1 + ((Math.random() * (backgroundBag.length - 1)) | 0);
+    [backgroundBag[0], backgroundBag[j]] = [backgroundBag[j], backgroundBag[0]];
+  }
+}
+function nextBackgroundKey() {
+  if (!backgroundBag.length) refillBackgroundBag();
+  const key = backgroundBag.shift(); lastBackgroundKey = key; return key;
+}
+function selectBackgroundForRound(repaint = true) {
+  // Enhanced backgrounds are part of Blue Dog mode. When it is off, the
+  // original yard is always used, while the user's saved background choice is preserved.
+  currentBackgroundKey = !blueDogMode ? 'original' : (backgroundMode === 'random' ? nextBackgroundKey() : backgroundMode);
+  if (repaint && W > 0) { paintBackdrop(); seedClouds(); }
+}
+function selectBackgroundForLoad(repaint = true) {
+  if (!blueDogMode) {
+    currentBackgroundKey = 'original';
+  } else if (!hasSavedBackground) {
+    // Fresh installs start on one of the optional image backgrounds, never Original.
+    currentBackgroundKey = PNG_BACKGROUND_KEYS[(Math.random() * PNG_BACKGROUND_KEYS.length) | 0];
+    lastBackgroundKey = currentBackgroundKey;
+  } else {
+    currentBackgroundKey = backgroundMode === 'random' ? nextBackgroundKey() : backgroundMode;
+  }
+  if (repaint && W > 0) { paintBackdrop(); seedClouds(); }
+}
+
 function paintBackdrop() {
   bg.width = Math.round(W * dpr); bg.height = Math.round(H * dpr);
   const c = bg.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, W, H);
+
+  // Photo/illustration backgrounds fill the screen with a center-cropped cover fit.
+  // While an image is loading, or if it fails, the original yard is used instead.
+  if (!backgroundUsesOriginal()) {
+    drawCoverImage(c, BACKGROUND_ART[currentBackgroundKey].img, W, H);
+    return;
+  }
+
   const rnd = seeded(7), m = Math.min(W, H);
 
   // Sky, warming toward the horizon
@@ -653,6 +872,19 @@ function playSplat() {   // rainbow melon: a soft low "bloop", a wet whoosh, the
     NOTES.forEach((n, i) => tone(n, t0 + 0.1 + i * 0.06, 0.22, 'triangle', 0.22));
   } catch (e) {}
 }
+function playWoof(vol) {   // two short buzzy notes that drop in pitch: "ruff ruff"
+  if (!canPlay()) return;
+  try {
+    const t0 = ac.currentTime;
+    for (const [at, hz] of [[0, 430], [0.17, 380]]) {
+      const o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain(), s0 = t0 + at;
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(hz, s0); o.frequency.exponentialRampToValueAtTime(hz * 0.55, s0 + 0.11);
+      f.type = 'lowpass'; f.frequency.value = 1100;
+      g.gain.setValueAtTime(0.0001, s0); g.gain.exponentialRampToValueAtTime(0.35 * vol, s0 + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.13);
+      o.connect(f); f.connect(g); g.connect(master); o.start(s0); o.stop(s0 + 0.16);
+    }
+  } catch (e) {}
+}
 
 /* ============================================================
    GAME RULES
@@ -782,6 +1014,316 @@ function starBurst() {
 }
 
 /* ============================================================
+   THE DOG
+   The game first tries to use PNG artwork stored beside this
+   HTML file. If an image is missing or fails to load, it falls
+   back to the original canvas-drawn dog automatically.
+   ============================================================ */
+const DOG = { fur: '#fff6e6', shade: '#e9d9bf', patch: '#b9783f', ink: '#3a4a66', scarf: '#f0364b', tongue: '#ff8fa3' };
+
+// Keep these PNG files in the same GitHub Pages folder as index.html.
+const DOG_ART = {
+  run:       { files: ['BlueDogRunning.png'],                 img: null, ready: false, peekScale: 1.0 },
+  blue1:     { files: ['BlueDog01.png'],                      img: null, ready: false, peekScale: 1.0 },
+  blue2:     { files: ['BlueDog02.png'],                      img: null, ready: false, peekScale: 1.0 },
+  orange:    { files: ['OrangeDog01.png'],                    img: null, ready: false, peekScale: 1.0 },
+  bigBlue:   { files: ['BigBlueDog01.png'],                   img: null, ready: false, peekScale: 1.15 },
+  bigOrange: { files: ['BigOrangeDog01.png', 'BigOrangeDog01'], img: null, ready: false, peekScale: 1.15 }
+};
+
+let dogAssetsStarted = false;
+function loadDogArt(art, candidateIndex = 0) {
+  const file = art.files[candidateIndex];
+  if (!file) { art.ready = false; return; }
+  const img = new Image(); art.img = img; img.decoding = 'async';
+  img.onload = () => { art.ready = true; art.loadedFile = file; };
+  img.onerror = () => { art.ready = false; art.img = null; loadDogArt(art, candidateIndex + 1); };
+  img.src = file;
+}
+function ensureDogAssets() {
+  if (dogAssetsStarted) return;
+  dogAssetsStarted = true;
+  for (const art of Object.values(DOG_ART)) loadDogArt(art);
+}
+function ensureBlueDogAssets() {
+  if (!blueDogMode) return;
+  ensureDogAssets();
+  ensureBackgroundAssets();
+}
+
+function dogArtReady(key) {
+  const art = DOG_ART[key];
+  return !!(art && art.ready && art.img && art.img.complete && art.img.naturalWidth > 0);
+}
+
+function drawContainedImage(c, img, cx, cy, maxW, maxH) {
+  const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+  const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+  c.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+}
+
+let lastDogArtKey = null;
+let dogArtBag = [];
+
+function refillDogArtBag() {
+  dogArtBag = ['run', 'blue1', 'blue2', 'orange', 'bigBlue', 'bigOrange'];
+  for (let i = dogArtBag.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [dogArtBag[i], dogArtBag[j]] = [dogArtBag[j], dogArtBag[i]];
+  }
+  // A fresh shuffle can accidentally begin with the dog we just showed.
+  // Swap it with another entry so the same dog is never shown twice in a row.
+  if (dogArtBag.length > 1 && dogArtBag[0] === lastDogArtKey) {
+    const j = 1 + ((Math.random() * (dogArtBag.length - 1)) | 0);
+    [dogArtBag[0], dogArtBag[j]] = [dogArtBag[j], dogArtBag[0]];
+  }
+}
+
+function nextDogArtKey() {
+  if (!dogArtBag.length) refillDogArtBag();
+  const key = dogArtBag.shift();
+  lastDogArtKey = key;
+  return key;
+}
+
+function startDog() {
+  const u = clamp(Math.min(W, H) * 0.2, 70, 170);   // u = the dog's size; everything is drawn in multiples of it
+
+  // Original is the first-load/default experience and uses only the built-in canvas pup.
+  if (!blueDogMode) {
+    if (Math.random() < 0.35) {
+      dog = { mode: 'peek', t: 0, u: u * 1.5, x: W * rand(0.2, 0.8), hold: rand(1.3, 2.2), hop: 0, boop: 0, artKey: null };
+    } else {
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      dog = { mode: 'run', t: 0, u, dir, x: dir > 0 ? -u * 1.2 : W + u * 1.2, stopX: Math.random() < 0.6 ? W * rand(0.3, 0.7) : null, pause: 0, pauseLen: rand(0.8, 1.6), hop: 0, boop: 0, artKey: null };
+    }
+    playWoof(0.5);
+    return;
+  }
+
+  const artKey = nextDogArtKey();
+  // Image dogs favor active full-screen appearances: about 55% run across,
+  // 30% bounce/dance around the playfield, and only 15% pop up from below.
+  const roll = Math.random();
+  if (roll < 0.55) {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    dog = {
+      mode: 'run', t: 0, u: u * (DOG_ART[artKey].peekScale || 1), dir,
+      x: dir > 0 ? -u * 1.3 : W + u * 1.3,
+      stopX: Math.random() < 0.35 ? W * rand(0.25, 0.75) : null,
+      pause: 0, pauseLen: rand(0.5, 1.2), hop: 0, boop: 0, artKey
+    };
+  } else if (roll < 0.85) {
+    const speed = Math.max(Math.min(W, H) * rand(0.22, 0.34), 150);
+    const a = rand(-Math.PI, Math.PI);
+    dog = {
+      mode: 'dance', t: 0, u: u * (DOG_ART[artKey].peekScale || 1), artKey,
+      x: W * rand(0.22, 0.78), y: H * rand(0.28, 0.72),
+      vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+      dir: Math.cos(a) >= 0 ? 1 : -1,
+      life: rand(4.0, 6.5), hop: 0, boop: 0
+    };
+  } else {
+    dog = { mode: 'peek', t: 0, u: u * 1.5, x: W * rand(0.2, 0.8), hold: rand(1.3, 2.2), hop: 0, boop: 0, artKey };
+  }
+  playWoof(0.5);
+}
+function updateDog(dt) {
+  if (!dog) {   // away: count down to the next visit (only while a round is being played)
+    if (phase !== 'play' || TUNE.dogMax <= 0) return;
+    dogTimer -= dt;
+    if (dogTimer <= 0) { startDog(); dogTimer = rand(TUNE.dogMin, TUNE.dogMax); }
+    return;
+  }
+  const d = dog; d.t += dt; if (d.hop > 0) d.hop -= dt; if (d.boop > 0) d.boop -= dt;
+  if (d.mode === 'peek') { if (d.t > 0.3 + d.hold + 0.3) dog = null; return; }
+
+  if (d.mode === 'dance') {
+    d.life -= dt;
+    d.x += d.vx * dt; d.y += d.vy * dt;
+    const padX = d.u * 0.55, padY = d.u * 0.48;
+    if (d.x < padX) { d.x = padX; d.vx = Math.abs(d.vx); }
+    else if (d.x > W - padX) { d.x = W - padX; d.vx = -Math.abs(d.vx); }
+    if (d.y < H * 0.16 + padY) { d.y = H * 0.16 + padY; d.vy = Math.abs(d.vy); }
+    else if (d.y > H * 0.88 - padY) { d.y = H * 0.88 - padY; d.vy = -Math.abs(d.vy); }
+    d.dir = d.vx >= 0 ? 1 : -1;
+    // Gentle wandering prevents a perfectly repetitive diagonal bounce.
+    d.vy += Math.sin(d.t * 2.4) * d.u * 0.32 * dt;
+    const maxV = Math.max(Math.min(W, H) * 0.42, 260);
+    const v = Math.hypot(d.vx, d.vy);
+    if (v > maxV) { d.vx *= maxV / v; d.vy *= maxV / v; }
+    if (d.life <= 0) dog = null;
+    return;
+  }
+
+  if (d.pause > 0) { d.pause -= dt; if (d.pause <= 0 && Math.random() < 0.35) d.dir = -d.dir; return; }   // sometimes he turns back the way he came
+  const before = d.x; d.x += d.dir * Math.max(W * 0.3, 260) * dt;
+  if (d.stopX !== null && (before - d.stopX) * (d.x - d.stopX) <= 0) { d.pause = d.pauseLen; d.stopX = null; }
+  if (d.x < -d.u * 1.5 || d.x > W + d.u * 1.5) dog = null;
+}
+const dogHop = d => d.hop > 0 ? -Math.sin(Math.PI * (1 - d.hop / 0.45)) * d.u * 0.35 : 0;
+function peekRise(d) {   // 0 = hidden below the screen, 1 = fully popped up
+  const up = Math.min(1, d.t / 0.3), down = clamp((d.t - 0.3 - d.hold) / 0.3, 0, 1);
+  return (1 - (1 - up) * (1 - up)) * (1 - down * down);
+}
+function dogSpot(d) {    // where he is and roughly how big, for drawing and touch
+  if (d.mode === 'peek') return { x: d.x, y: H + d.u * 0.6 - peekRise(d) * d.u * 1.25 + dogHop(d), r: d.u * 0.6 };
+  if (d.mode === 'dance') return { x: d.x, y: d.y + dogHop(d), r: d.u * 0.62 };
+  return { x: d.x + d.dir * d.u * 0.15, y: H * 0.94 - d.u * 0.55 + dogHop(d), r: d.u * 0.7 };
+}
+function boopDog() {
+  const d = dog; if (!d || d.boop > 0) return;
+  d.boop = 0.8; d.hop = 0.45; if (d.mode === 'peek') d.hold += 0.6;
+  // Keep the bark sound, but no on-screen "Woof!" text.
+  playWoof(1);
+}
+
+function drawDogImageRun(c, d, t) {
+  if (!dogArtReady(d.artKey)) return false;
+  const u = d.u, moving = d.pause <= 0;
+  const step = Math.sin(t * 10.5);
+  const bounce = moving ? Math.abs(step) * u * 0.10 : Math.abs(Math.sin(t * 5)) * u * 0.035;
+  const jump = moving ? Math.max(0, Math.sin(t * 4.2)) * u * 0.13 : 0;
+  const squash = moving ? 1 - Math.abs(step) * 0.035 : 1;
+  const stretch = moving ? 1 + Math.abs(step) * 0.035 : 1;
+  const tilt = moving ? Math.sin(t * 10.5) * 0.045 : Math.sin(t * 4) * 0.025;
+
+  c.save();
+  c.translate(d.x, H * 0.94 - u * 0.57 - bounce - jump + dogHop(d));
+  // BlueDogRunning.png faces the opposite direction from the old vector dog,
+  // so invert the horizontal scale. It still flips automatically whenever d.dir changes.
+  const face = d.artKey === 'run' ? -d.dir : d.dir;
+  c.scale(face, 1);
+  c.rotate(tilt * d.dir);
+  c.scale(squash, stretch);
+  drawContainedImage(c, DOG_ART[d.artKey].img, 0, 0, u * 1.75, u * 1.35);
+  c.restore();
+  return true;
+}
+
+function drawDogImagePeek(c, d) {
+  if (!dogArtReady(d.artKey)) return false;
+  const u = d.u, s = dogSpot(d), rise = peekRise(d);
+  const bob = Math.sin(d.t * 7.5) * u * 0.035 * rise;
+  const bounce = Math.abs(Math.sin(d.t * 4.8)) * u * 0.025 * rise;
+  const tilt = Math.sin(d.t * 4.5) * 0.055;
+  const pulse = 1 + Math.sin(d.t * 8) * 0.018 * rise;
+
+  c.save();
+  c.translate(s.x, s.y - bob - bounce);
+  c.rotate(tilt);
+  c.scale(pulse, 2 - pulse);
+  const art = DOG_ART[d.artKey], k = art.peekScale || 1;
+  drawContainedImage(c, art.img, 0, 0, u * 1.25 * k, u * 1.35 * k);
+  c.restore();
+  return true;
+}
+
+function drawDogImageDance(c, d) {
+  if (!dogArtReady(d.artKey)) return false;
+  const u = d.u;
+  const bounce = Math.abs(Math.sin(d.t * 6.6)) * u * 0.11;
+  const hop = Math.max(0, Math.sin(d.t * 3.3)) * u * 0.12;
+  const tilt = Math.sin(d.t * 5.1) * 0.14;
+  const pulse = 1 + Math.sin(d.t * 7.2) * 0.045;
+  c.save();
+  c.translate(d.x, d.y - bounce - hop + dogHop(d));
+  // The dedicated running PNG is authored facing the opposite direction.
+  const face = d.artKey === 'run' ? -d.dir : d.dir;
+  c.scale(face, 1);
+  c.rotate(tilt * d.dir);
+  c.scale(pulse, 2 - pulse);
+  drawContainedImage(c, DOG_ART[d.artKey].img, 0, 0, u * 1.55, u * 1.45);
+  c.restore();
+  return true;
+}
+
+function drawDog(c, d, t) {
+  // Original mode always uses the built-in vector dog, even if PNGs are available.
+  if (!blueDogMode || !d.artKey) {
+    if (d.mode === 'peek') drawDogPeekVector(c, d);
+    else drawDogRunVector(c, d, t);
+    return;
+  }
+  if (d.mode === 'peek') {
+    if (!drawDogImagePeek(c, d)) drawDogPeekVector(c, d);
+  } else if (d.mode === 'dance') {
+    if (!drawDogImageDance(c, d)) drawDogRunVector(c, d, t);
+  } else {
+    if (!drawDogImageRun(c, d, t)) drawDogRunVector(c, d, t);
+  }
+}
+
+function drawDogRunVector(c, d, t) {   // side view, drawn facing right and flipped when he runs left
+  const u = d.u, moving = d.pause <= 0, ph = t * 13;
+  const bounce = moving ? Math.abs(Math.sin(ph)) * u * 0.07 : 0;
+  const baseY = d.mode === 'dance' && Number.isFinite(d.y) ? d.y : H * 0.94 - u * 0.48;
+  c.save(); c.translate(d.x, baseY - bounce + dogHop(d)); c.scale(d.dir || 1, 1);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  // legs and tail are thick lines: one dark pass, then a thinner coloured pass on top, which leaves an outline
+  const limb = (x0, y0, x1, y1, w, col) => {
+    c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1);
+    c.lineWidth = w + u * 0.05; c.strokeStyle = DOG.ink; c.stroke(); c.lineWidth = w; c.strokeStyle = col; c.stroke();
+  };
+  const leg = (hx, phase, col) => { const a = moving ? Math.sin(ph + phase) * 0.75 : 0; limb(hx, u * 0.1, hx + Math.sin(a) * u * 0.34, u * 0.1 + Math.cos(a) * u * 0.38, u * 0.11, col); };
+  leg(-0.36 * u, Math.PI, DOG.shade); leg(0.3 * u, 0, DOG.shade);   // far-side legs
+  const wag = 0.9 + Math.sin(t * (moving ? 10 : 22)) * 0.3;         // tail wags faster when he stops
+  limb(-0.48 * u, -0.08 * u, -0.48 * u - Math.cos(wag) * u * 0.36, -0.08 * u - Math.sin(wag) * u * 0.36, u * 0.09, DOG.fur);
+  // body with a soft blue patch on the back
+  c.beginPath(); c.ellipse(0, 0, u * 0.55, u * 0.29, 0, 0, TAU); c.fillStyle = DOG.fur; c.fill(); c.lineWidth = u * 0.04; c.strokeStyle = DOG.ink; c.stroke();
+  c.save(); c.clip(); c.beginPath(); c.ellipse(-u * 0.14, -u * 0.2, u * 0.26, u * 0.2, 0, 0, TAU); c.fillStyle = DOG.patch; c.fill(); c.restore();
+  leg(-0.3 * u, 0, DOG.fur); leg(0.36 * u, Math.PI, DOG.fur);       // near-side legs
+  // bandana
+  c.beginPath(); c.moveTo(u * 0.24, -u * 0.22); c.lineTo(u * 0.5, -u * 0.06); c.lineTo(u * 0.3, u * 0.1); c.closePath();
+  c.fillStyle = DOG.scarf; c.fill(); c.lineWidth = u * 0.04; c.strokeStyle = DOG.ink; c.stroke();
+  // head: skull and snout are outlined first and filled second, so they join into one shape
+  const hx = u * 0.52, hy = -u * 0.34 + (moving ? 0 : Math.sin(t * 9) * u * 0.02);
+  const skull = () => { c.beginPath(); c.arc(hx, hy, u * 0.26, 0, TAU); };
+  const snout = () => { c.beginPath(); c.ellipse(hx + u * 0.24, hy + u * 0.07, u * 0.2, u * 0.15, 0, 0, TAU); };
+  c.lineWidth = u * 0.08; c.strokeStyle = DOG.ink; skull(); c.stroke(); snout(); c.stroke();
+  c.fillStyle = DOG.fur; skull(); c.fill(); snout(); c.fill();
+  if (!moving) {   // panting tongue while he stands still
+    c.beginPath(); c.ellipse(hx + u * 0.27, hy + u * 0.25 + Math.sin(t * 14) * u * 0.012, u * 0.055, u * 0.09, 0, 0, TAU);
+    c.fillStyle = DOG.tongue; c.fill(); c.lineWidth = u * 0.03; c.stroke();
+  }
+  c.lineWidth = u * 0.03; c.beginPath(); c.arc(hx + u * 0.26, hy + u * 0.09, u * 0.1, 0.4, 2.1); c.stroke();   // smile
+  dot(c, hx + u * 0.43, hy + u * 0.02, u * 0.055, '#2b2b2b');                                               // nose
+  dot(c, hx + u * 0.08, hy - u * 0.07, u * 0.042, '#2b2b2b'); dot(c, hx + u * 0.095, hy - u * 0.085, u * 0.014, '#ffffff');   // eye
+  // floppy ear that flaps as he runs
+  c.save(); c.translate(hx - u * 0.1, hy - u * 0.14); c.rotate(0.3 + (moving ? Math.sin(ph) * 0.35 : 0));
+  c.beginPath(); c.ellipse(0, u * 0.16, u * 0.12, u * 0.22, 0, 0, TAU); c.fillStyle = DOG.patch; c.fill(); c.lineWidth = u * 0.04; c.strokeStyle = DOG.ink; c.stroke(); c.restore();
+  c.restore();
+}
+
+function drawDogPeekVector(c, d) {   // front view of his head and shoulders, rising from the bottom edge
+  const u = d.u, s = dogSpot(d);
+  c.save(); c.translate(s.x, s.y); c.rotate(Math.sin(d.t * 3) * 0.07);
+  c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = DOG.ink; c.lineWidth = u * 0.035;
+  // shoulders (run off the bottom of the screen) and bandana
+  c.beginPath(); c.ellipse(0, u * 0.95, u * 0.5, u * 0.6, 0, 0, TAU); c.fillStyle = DOG.fur; c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(-u * 0.4, u * 0.4); c.quadraticCurveTo(0, u * 0.62, u * 0.4, u * 0.4); c.lineTo(0, u * 0.85); c.closePath(); c.fillStyle = DOG.scarf; c.fill(); c.stroke();
+  // ears hang behind the head and wiggle
+  for (const sd of [-1, 1]) {
+    c.save(); c.translate(sd * u * 0.42, -u * 0.25); c.rotate(-sd * (0.3 + Math.sin(d.t * 5 + sd) * 0.1));
+    c.beginPath(); c.ellipse(0, u * 0.26, u * 0.15, u * 0.3, 0, 0, TAU); c.fillStyle = DOG.patch; c.fill(); c.stroke(); c.restore();
+  }
+  // head with a soft blue patch over one eye
+  c.beginPath(); c.arc(0, 0, u * 0.5, 0, TAU); c.fillStyle = DOG.fur; c.fill(); c.stroke();
+  c.save(); c.clip(); c.beginPath(); c.ellipse(-u * 0.2, -u * 0.1, u * 0.19, u * 0.23, -0.2, 0, TAU); c.fillStyle = DOG.patch; c.fill(); c.restore();
+  const blink = (d.t % 1.7) > 1.58;
+  for (const sd of [-1, 1]) {
+    if (blink) { c.beginPath(); c.moveTo(sd * u * 0.2 - u * 0.05, -u * 0.1); c.lineTo(sd * u * 0.2 + u * 0.05, -u * 0.1); c.stroke(); }
+    else { dot(c, sd * u * 0.2, -u * 0.1, u * 0.055, '#2b2b2b'); dot(c, sd * u * 0.2 + u * 0.02, -u * 0.12, u * 0.018, '#ffffff'); }
+  }
+  // muzzle, panting tongue, smile and nose
+  c.beginPath(); c.ellipse(0, u * 0.17, u * 0.25, u * 0.19, 0, 0, TAU); c.fillStyle = '#ffffff'; c.fill(); c.stroke();
+  c.beginPath(); c.ellipse(0, u * 0.33 + Math.sin(d.t * 14) * u * 0.012, u * 0.075, u * 0.1, 0, 0, TAU); c.fillStyle = DOG.tongue; c.fill(); c.stroke();
+  for (const sd of [-1, 1]) { c.beginPath(); c.arc(sd * u * 0.07, u * 0.17, u * 0.07, 0.1, Math.PI - 0.1); c.stroke(); }
+  c.beginPath(); c.ellipse(0, u * 0.07, u * 0.085, u * 0.06, 0, 0, TAU); c.fillStyle = '#2b2b2b'; c.fill();
+  c.restore();
+}
+
+/* ============================================================
    INPUT
    Pointer Events cover fingers and the mouse with one code path.
    - Touch: swipe across fruit, or just poke it.
@@ -800,6 +1342,7 @@ function segDist(px, py, ax, ay, bx, by) {   // distance from a point to a line 
 function hit(a, b) {
   if (paused || (phase !== 'play' && phase !== 'winddown')) return;   // the last falling fruit can still be chopped
   const moved = Math.hypot(b.x - a.x, b.y - a.y) > 2;
+  if (dog) { const s = dogSpot(dog); if (segDist(s.x, s.y, a.x, a.y, b.x, b.y) <= s.r) boopDog(); }   // the dog gets a boop, never a chop
   for (const p of pieces) {
     // Skip bits that are already as small as they get, and bits made a moment ago (so one swipe is one cut)
     if (p.dead || p.wait > 0 || p.depth >= TUNE.maxCuts || (p.depth && p.age < TUNE.recutDelay)) continue;
@@ -870,6 +1413,7 @@ function update(dt) {
   for (const fl of flashes) { fl.life += dt; if (fl.life > 0.18) fl.dead = true; }
   for (const c of clouds) { c.x += c.v * dt; if (c.x - c.s * 2 > W) c.x = -c.s * 2; }
   if (shake > 0) shake -= dt;
+  updateDog(dt);
 
   for (const list of [pieces, splats, drops, stars, flashes])
     for (let i = list.length - 1; i >= 0; i--) if (list[i].dead) list.splice(i, 1);
@@ -923,19 +1467,21 @@ function draw(t) {
   c.drawImage(bg, 0, 0, W, H);
   if (shake > 0) { const k = shake / 0.4 * 12; c.translate(rand(-k, k), rand(-k, k)); }   // wobble everything but the backdrop
 
-  // Sun with slowly turning rays
-  const s = sunSpot();
-  c.save(); c.translate(s.x, s.y); c.rotate(reduceMotion ? 0 : t * 0.12);
-  c.fillStyle = 'rgba(255,212,71,.75)';
-  for (let i = 0; i < 12; i++) { c.rotate(TAU / 12); c.beginPath(); c.moveTo(-s.r * 0.16, -s.r * 1.18); c.lineTo(0, -s.r * 1.62); c.lineTo(s.r * 0.16, -s.r * 1.18); c.closePath(); c.fill(); }
-  c.restore();
-  dot(c, s.x, s.y, s.r, '#ffd447'); c.lineWidth = Math.max(2, s.r * 0.07); c.strokeStyle = '#f2b422'; c.stroke();
+  if (backgroundUsesOriginal()) {
+    // Sun with slowly turning rays (part of the original yard only)
+    const s = sunSpot();
+    c.save(); c.translate(s.x, s.y); c.rotate(reduceMotion ? 0 : t * 0.12);
+    c.fillStyle = 'rgba(255,212,71,.75)';
+    for (let i = 0; i < 12; i++) { c.rotate(TAU / 12); c.beginPath(); c.moveTo(-s.r * 0.16, -s.r * 1.18); c.lineTo(0, -s.r * 1.62); c.lineTo(s.r * 0.16, -s.r * 1.18); c.closePath(); c.fill(); }
+    c.restore();
+    dot(c, s.x, s.y, s.r, '#ffd447'); c.lineWidth = Math.max(2, s.r * 0.07); c.strokeStyle = '#f2b422'; c.stroke();
 
-  // Clouds
-  c.fillStyle = 'rgba(255,255,255,.93)';
-  for (const cl of clouds) {
-    for (const [ox, oy, rr] of [[-.9, .1, .55], [-.3, -.25, .7], [.4, -.1, .62], [.95, .15, .48]]) { c.beginPath(); c.arc(cl.x + ox * cl.s, cl.y + oy * cl.s, rr * cl.s, 0, TAU); c.fill(); }
-    c.beginPath(); c.ellipse(cl.x, cl.y + cl.s * 0.32, cl.s * 1.35, cl.s * 0.36, 0, 0, TAU); c.fill();
+    // Clouds are also part of the original yard only.
+    c.fillStyle = 'rgba(255,255,255,.93)';
+    for (const cl of clouds) {
+      for (const [ox, oy, rr] of [[-.9, .1, .55], [-.3, -.25, .7], [.4, -.1, .62], [.95, .15, .48]]) { c.beginPath(); c.arc(cl.x + ox * cl.s, cl.y + oy * cl.s, rr * cl.s, 0, TAU); c.fill(); }
+      c.beginPath(); c.ellipse(cl.x, cl.y + cl.s * 0.32, cl.s * 1.35, cl.s * 0.36, 0, 0, TAU); c.fill();
+    }
   }
 
   // The mess: stains sit behind the fruit, pop in, drip, then fade over the last part of their life
@@ -947,6 +1493,9 @@ function draw(t) {
     c.save(); c.translate(sp.x, sp.y); c.rotate(sp.rot); c.drawImage(sp.img, -k, -k, 2 * k, 2 * k); c.restore();
   }
   c.globalAlpha = 1;
+
+  // The pup sits in front of the mess but behind the fruit, so he never hides something to chop
+  if (dog) drawDog(c, dog, t);
 
   // Fruit and fruit bits
   for (const p of pieces) if (p.wait <= 0) drawPiece(c, p, t);
@@ -1000,9 +1549,9 @@ function frame(ms) {
    BUTTONS: Play, and the hold-to-open grown-ups menu
    ============================================================ */
 const startOverlay = $('startOverlay'), menuOverlay = $('menuOverlay'), gear = $('gear'), gearHint = $('gearHint');
-const soundBtn = $('soundBtn'), fullBtn = $('fullBtn');
+const soundBtn = $('soundBtn'), fullBtn = $('fullBtn'), blueDogBtn = $('blueDogBtn'), backgroundGroup = $('backgroundGroup');
 
-const doneOverlay = $('doneOverlay'), timePill = $('timePill'), limitSeg = $('limitSeg');
+const doneOverlay = $('doneOverlay'), timePill = $('timePill'), limitSeg = $('limitSeg'), backgroundSeg = $('backgroundSeg');
 const customRow = $('customRow'), customInput = $('customMin'), startLimit = $('startLimit');
 
 /* ---- Time limit ----
@@ -1043,10 +1592,50 @@ customInput.addEventListener('input', () => {
 });
 customInput.addEventListener('change', () => { customInput.value = customMin; });   // snap odd entries back to 1-180
 
+/* ---- Background choice ----
+   Random uses a shuffled bag of all five backgrounds, so each appears once per cycle and never twice in a row. */
+function showBackgroundChoice() {
+  for (const b of backgroundSeg.querySelectorAll('button[data-bg]')) b.setAttribute('aria-pressed', String(b.dataset.bg === backgroundMode));
+}
+backgroundSeg.addEventListener('click', e => {
+  if (!blueDogMode) return;
+  const b = e.target.closest('button[data-bg]'); if (!b) return;
+  backgroundMode = b.dataset.bg;
+  hasSavedBackground = true;
+  try { localStorage.setItem('fruitchop.background', backgroundMode); } catch (e) {}
+  selectBackgroundForRound(true);
+  showBackgroundChoice();
+});
+
+/* ---- Dog style ----
+   Off = original canvas dog. On = shuffled PNG dogs. The choice persists in localStorage. */
+function showDogChoice() {
+  blueDogBtn.setAttribute('aria-pressed', String(blueDogMode));
+  blueDogBtn.textContent = blueDogMode ? 'Blue Dog: On' : 'Blue Dog: Off';
+  backgroundGroup.hidden = !blueDogMode;
+}
+blueDogBtn.addEventListener('click', () => {
+  blueDogMode = !blueDogMode;
+  try { localStorage.setItem('fruitchop.blueDog', blueDogMode ? 'on' : 'off'); } catch (e) {}
+
+  if (blueDogMode) {
+    // Only now request the optional dog/background PNGs. Restore the saved background choice.
+    ensureBlueDogAssets();
+  }
+
+  // Switching off immediately returns to the original yard and original canvas dog.
+  dog = null; dogTimer = 1.0;
+  selectBackgroundForRound(true);
+  showDogChoice();
+  showBackgroundChoice();
+});
+
 function beginRound(freshScore) {
   ensureAudio();
+  const wasAttract = phase === 'attract';
   if (freshScore) setScore(0, true);
-  phase = 'play'; timeLeft = limitSec; pieces.length = 0; spawnTimer = 0.3; tossCount = 0; nextRainbow = 4;
+  if (blueDogMode && backgroundMode === 'random' && !wasAttract) selectBackgroundForRound(true);
+  phase = 'play'; timeLeft = limitSec; pieces.length = 0; spawnTimer = 0.3; tossCount = 0; nextRainbow = 4; dog = null; dogTimer = rand(8, 14);
   startOverlay.hidden = true; doneOverlay.hidden = true;
   shownSec = -1; showTime();
 }
@@ -1128,10 +1717,12 @@ function start(saved) {
   $('ver').textContent = VERSION;
   showSound();
   const ic = $('scoreIcon').getContext('2d'); ic.translate(36, 37); paintWhole(ic, FRUITS[5], 25);   // strawberry next to the score
+  ensureBlueDogAssets();   // no-op unless the remembered Blue Dog preference is On
+  selectBackgroundForLoad(false);
   resize();
   window.addEventListener('resize', resize);
   if (window.ResizeObserver) new ResizeObserver(resize).observe(game);
-  customInput.value = customMin; applyLimit(false);
+  customInput.value = customMin; applyLimit(false); showBackgroundChoice(); showDogChoice();
   if (window.self === window.top) {   // browser tab icon, drawn from the game's own art
     try { const l = document.createElement('link'); l.rel = 'icon'; l.href = makeIcon(64).toDataURL('image/png'); document.head.appendChild(l); } catch (e) {}
   }
