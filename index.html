@@ -62,9 +62,16 @@ body{
 .pin-card p{margin:0;font-weight:700;color:var(--ink-soft)}
 .pin-card input{
   width:7ch;box-sizing:border-box;padding:10px 12px;text-align:center;font:800 30px var(--font-body);letter-spacing:.18em;
-  color:var(--ink);background:#fff;border:4px solid var(--ink);border-radius:16px;outline:none;-webkit-user-select:text;user-select:text;
+  color:var(--ink);background:#fff;border:4px solid var(--ink);border-radius:16px;outline:none;caret-color:transparent;
+  -webkit-user-select:none;user-select:none;pointer-events:none;
 }
-.pin-card input:focus{outline:4px solid var(--sun);outline-offset:3px}
+.pin-keypad{display:grid;grid-template-columns:repeat(3,minmax(70px,92px));gap:10px;justify-content:center;width:100%}
+.pin-key{
+  min-height:58px;padding:6px 10px;border:3px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 var(--ink);
+  background:var(--paper);color:var(--ink);font:400 28px var(--font-display);touch-action:manipulation;cursor:pointer;
+}
+.pin-key.action{font-size:17px}
+.pin-key:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
 .pin-error{min-height:1.4em;color:var(--berry)!important}
 .pin-card.shake{animation:pinShake .28s ease-out}
 @keyframes pinShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
@@ -169,6 +176,27 @@ body{
 .field input{width:5.5em;font:800 20px var(--font-body);color:var(--ink);background:var(--paper);border:3px solid var(--ink);border-radius:14px;padding:8px 10px;text-align:center;-webkit-user-select:text;user-select:text}
 .ver{font-size:13px;font-weight:600;color:var(--ink-soft);opacity:.8}
 
+/* ---- Clean-up mini-game shown immediately when a timed round ends ---- */
+.cleanup-banner{
+  position:absolute;left:50%;top:max(calc(var(--gutter) + 6px),env(safe-area-inset-top,0px));transform:translateX(-50%);
+  z-index:4;display:grid;grid-template-columns:auto auto;grid-template-areas:"title timer" "hint hint";column-gap:16px;row-gap:2px;
+  align-items:center;min-width:min(86vw,430px);box-sizing:border-box;padding:10px 18px;
+  background:rgba(255,253,245,.94);color:var(--ink);border:4px solid var(--ink);border-radius:22px;box-shadow:0 6px 0 var(--ink);
+  pointer-events:none;text-align:left;
+}
+.cleanup-banner strong{grid-area:title;font:400 clamp(25px,6vw,36px)/1 var(--font-display)}
+.cleanup-banner .cleanup-clock{grid-area:timer;justify-self:end;font:400 clamp(22px,5vw,30px)/1 var(--font-display);color:var(--berry);font-variant-numeric:tabular-nums}
+.cleanup-banner .cleanup-hint{grid-area:hint;font-size:15px;font-weight:800;color:var(--ink-soft)}
+.cleanup-message{
+  position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;
+  background:rgba(255,253,245,.58);pointer-events:none;text-align:center;
+}
+.cleanup-message .cleanup-card{
+  max-width:520px;padding:28px 30px;background:var(--paper);border:4px solid var(--ink);border-radius:30px;box-shadow:0 10px 0 var(--ink)
+}
+.cleanup-message h2{margin:0 0 10px;font:400 clamp(42px,11vw,72px)/1 var(--font-display);color:var(--ink)}
+.cleanup-message p{margin:0;font-size:clamp(20px,5vw,30px);line-height:1.25;font-weight:800;color:var(--ink-soft)}
+
 @media (prefers-reduced-motion:reduce){
   .score.bump,.cheer.show{animation:none}
   .cheer.show{opacity:1}
@@ -184,9 +212,22 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
 <div class="pin-gate" id="pinGate" role="dialog" aria-modal="true" aria-labelledby="pinTitle">
   <div class="pin-card" id="pinCard">
     <h1 id="pinTitle">Fruit Chop</h1>
-    <p>Enter the family PIN to play.</p>
-    <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="4 digit PIN">
-    <button class="btn big" id="pinUnlockBtn" type="button">Unlock</button>
+    <p id="pinPrompt">Enter the family PIN to play.</p>
+    <input id="pinInput" type="password" inputmode="none" maxlength="4" readonly tabindex="-1" aria-label="4 digit PIN">
+    <div class="pin-keypad" id="pinKeypad" aria-label="PIN keypad">
+      <button class="pin-key" type="button" data-pin="1">1</button>
+      <button class="pin-key" type="button" data-pin="2">2</button>
+      <button class="pin-key" type="button" data-pin="3">3</button>
+      <button class="pin-key" type="button" data-pin="4">4</button>
+      <button class="pin-key" type="button" data-pin="5">5</button>
+      <button class="pin-key" type="button" data-pin="6">6</button>
+      <button class="pin-key" type="button" data-pin="7">7</button>
+      <button class="pin-key" type="button" data-pin="8">8</button>
+      <button class="pin-key" type="button" data-pin="9">9</button>
+      <button class="pin-key action" type="button" data-pin-action="clear">Clear</button>
+      <button class="pin-key" type="button" data-pin="0">0</button>
+      <button class="pin-key action" type="button" data-pin-action="delete">Delete</button>
+    </div>
     <p class="pin-error" id="pinError" aria-live="polite"></p>
   </div>
 </div>
@@ -194,15 +235,14 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
 (() => {
   const KEY = 'fruitchop.pinUnlocked.v1';
   const PIN_HASH = '28de56db50a1c9310f4eb478927dcc471f90a95c5d2c0eac1a3eb6f278987a29';
-  const locked = document.documentElement.classList.contains('pin-locked');
+  const initiallyLocked = document.documentElement.classList.contains('pin-locked');
   const gate = document.getElementById('pinGate');
   const card = document.getElementById('pinCard');
   const input = document.getElementById('pinInput');
-  const button = document.getElementById('pinUnlockBtn');
+  const keypad = document.getElementById('pinKeypad');
+  const prompt = document.getElementById('pinPrompt');
   const error = document.getElementById('pinError');
-
-  if (!locked) { gate.hidden = true; }
-  else { setTimeout(() => input.focus(), 50); }
+  let pendingResolve = null, rememberOnSuccess = false, checking = false;
 
   const sha256 = async value => {
     const bytes = new TextEncoder().encode(value);
@@ -210,39 +250,66 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
     return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
   };
 
-  async function unlock() {
-    const pin = input.value.replace(/\D/g, '');
-    input.value = pin;
-    if (pin.length !== 4) { error.textContent = 'Enter the 4 digit PIN.'; return; }
-    button.disabled = true; error.textContent = '';
+  function resetEntry() { input.value = ''; error.textContent = ''; checking = false; }
+
+  function showGate(message, remember) {
+    prompt.textContent = message || 'Enter the family PIN to play.';
+    rememberOnSuccess = !!remember;
+    resetEntry();
+    gate.hidden = false;
+    document.documentElement.classList.add('pin-locked');
+    return new Promise(resolve => { pendingResolve = resolve; });
+  }
+
+  async function checkPin() {
+    if (checking || input.value.length !== 4) return;
+    checking = true; error.textContent = '';
     try {
-      if (await sha256(pin) === PIN_HASH) {
-        try { localStorage.setItem(KEY, '1'); } catch (e) {}
+      if (await sha256(input.value) === PIN_HASH) {
+        if (rememberOnSuccess) { try { localStorage.setItem(KEY, '1'); } catch (e) {} }
         document.documentElement.classList.remove('pin-locked');
         gate.hidden = true;
         input.value = '';
+        checking = false;
+        const done = pendingResolve; pendingResolve = null;
+        if (done) done(true);
+        window.dispatchEvent(new Event('fruitchop-pin-unlocked'));
         return;
       }
     } catch (e) {
       error.textContent = 'PIN check is unavailable in this browser.';
-      button.disabled = false;
+      checking = false;
       return;
     }
     error.textContent = 'Wrong PIN.';
     card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
-    input.select(); button.disabled = false;
+    checking = false;
+    setTimeout(() => { input.value = ''; }, 220);
   }
 
-  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 4); error.textContent = ''; });
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
-  button.addEventListener('click', unlock);
+  keypad.addEventListener('click', e => {
+    const key = e.target.closest('button'); if (!key || checking) return;
+    error.textContent = '';
+    if (key.dataset.pinAction === 'clear') input.value = '';
+    else if (key.dataset.pinAction === 'delete') input.value = input.value.slice(0, -1);
+    else if (key.dataset.pin && input.value.length < 4) input.value += key.dataset.pin;
+    if (input.value.length === 4) setTimeout(checkPin, 70);
+  });
+
+  window.FruitChopPin = {
+    require(message) { return showGate(message || 'Enter the family PIN to continue.', false); },
+    lockDevice() {
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      showGate('Enter the family PIN to play.', true);
+    }
+  };
+
+  if (initiallyLocked) showGate('Enter the family PIN to play.', true);
+  else gate.hidden = true;
 
   window.addEventListener('DOMContentLoaded', () => {
     const lockButton = document.getElementById('lockDeviceBtn');
-    if (lockButton) lockButton.addEventListener('click', () => {
-      try { localStorage.removeItem(KEY); } catch (e) {}
-      location.reload();
-    });
+    if (lockButton) lockButton.addEventListener('click', () => window.FruitChopPin.lockDevice());
   });
 })();
 </script>
@@ -261,6 +328,17 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
   </button>
   <div class="hint" id="gearHint" hidden>Hold to open</div>
   <div class="time" id="timePill" aria-label="Time left" hidden></div>
+  <div class="cleanup-banner" id="cleanupBanner" hidden aria-live="polite">
+    <strong>Clean-up time!</strong>
+    <span class="cleanup-clock" id="cleanupClock">3:00</span>
+    <span class="cleanup-hint" id="cleanupHint">Swipe over the splashes to wipe the mess away.</span>
+  </div>
+  <div class="cleanup-message" id="cleanupMessage" hidden aria-live="assertive">
+    <div class="cleanup-card">
+      <h2 id="cleanupTitle">All clean!</h2>
+      <p id="cleanupText">Great job! Thank you for cleaning up.</p>
+    </div>
+  </div>
 
   <div class="cheer" id="cheer" aria-hidden="true"></div>
 
@@ -277,7 +355,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
     <div class="card" role="dialog" aria-modal="true" aria-labelledby="doneTitle">
       <h1 id="doneTitle">All done!</h1>
       <p id="doneText"></p>
-      <button class="btn big long hold" id="againBtn" type="button"><span class="fill"></span><span class="txt">Hold to play again</span></button>
+      <button class="btn big long" id="againBtn" type="button">Enter PIN to play again</button>
     </div>
   </div>
 
@@ -297,7 +375,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
           <label for="customMin">Minutes</label>
           <input id="customMin" type="number" inputmode="numeric" min="1" max="180" step="1" value="15">
         </div>
-        <p class="note">Picking a time restarts the countdown. When it runs out the fruit stops, and a grown-up holds a button to play again.</p>
+        <p class="note">Picking a time restarts the countdown. When time runs out, clean-up starts immediately: swipe away the splashes, then a grown-up enters the family PIN to play again.</p>
       </div>
       <div class="group" id="backgroundGroup" hidden>
         <div class="label" id="backgroundLabel">Background</div>
@@ -339,7 +417,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
 'use strict';
 
 /* Version: CalVer + daily build number. Bump on every code change. Shown in the grown-ups menu. */
-const VERSION = 'v2026.10.04.11';
+const VERSION = 'v2026.10.06.03';
 
 /* ============================================================
    TUNING: the knobs worth touching if the game feels too fast
@@ -378,9 +456,10 @@ const bg = document.createElement('canvas');   // the backyard is painted once h
 
 let W = 0, H = 0, dpr = 1;
 let score = 0, paused = false, spawnTimer = 0.4;
-// phase: 'attract' (start card showing) -> 'play' -> 'winddown' (time is up, last fruit still falling) -> 'done'
+// phase: 'attract' (start card) -> 'play' -> 'cleanup' -> 'cleanupThanks'. Timed rounds go straight to clean-up at zero.
 let phase = 'attract';
-let limitSec = 0, timeLeft = 0, windT = 0, shownSec = -1;   // limitSec 0 means no time limit
+let limitSec = 0, timeLeft = 0, shownSec = -1;   // limitSec 0 means no time limit
+let cleanupDeadline = 0, cleanupDone = false;   // clean-up lasts at most 3 real-time minutes
 const pieces = [];   // everything in the air: whole fruit and the bits they get chopped into
 const splats = [];   // juice stains left on the scene, oldest first
 const drops = [], stars = [], flashes = [], clouds = [];
@@ -815,9 +894,17 @@ function resize() {
    sound files to ship. Browsers (iPad especially) only allow
    audio after a real tap, which is one reason for the Play button.
    ============================================================ */
-let ac = null, master = null, noiseBuf = null, soundOn = true;
+let ac = null, master = null, noiseBuf = null, soundOn = true, audioPrimed = false;
 try { soundOn = localStorage.getItem('fruitchop.sound') !== 'off'; } catch (e) {}
 
+function primeAudio() {
+  if (!ac || audioPrimed) return;
+  try {
+    // A one-sample silent source started from a real tap helps iOS/Safari permanently unlock Web Audio for this page.
+    const src = ac.createBufferSource(), tiny = ac.createBuffer(1, 1, ac.sampleRate), g = ac.createGain();
+    src.buffer = tiny; g.gain.value = 0.00001; src.connect(g); g.connect(master); src.start(0); audioPrimed = true;
+  } catch (e) {}
+}
 function ensureAudio() {
   if (!soundOn) return;
   try {
@@ -827,7 +914,11 @@ function ensureAudio() {
       noiseBuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.2), ac.sampleRate);
       const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
-    if (ac.state === 'suspended') ac.resume();
+    primeAudio();
+    if (ac.state === 'suspended') {
+      const p = ac.resume();
+      if (p && p.then) p.then(primeAudio).catch(() => {});
+    }
   } catch (e) {}
 }
 const canPlay = () => soundOn && ac && ac.state === 'running';
@@ -1339,8 +1430,40 @@ function segDist(px, py, ax, ay, bx, by) {   // distance from a point to a line 
   const t = l2 ? clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1) : 0;
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
+function cleanupRemaining() { return splats.reduce((n, sp) => n + (!sp.dead ? 1 : 0), 0); }
+function updateCleanupHint() {
+  if (!cleanupHint) return;
+  const n = cleanupRemaining();
+  cleanupHint.textContent = n === 1
+    ? '1 colorful splash left — swipe over it to clean it.'
+    : n + ' colorful splashes left — swipe over them to clean up.';
+}
+function cleanMess(a, b) {
+  if (phase !== 'cleanup' || cleanupDone) return;
+  // Make the cleaning brush generous for little fingers. A single swipe that reaches a splash removes it completely.
+  // The old version faded a splash after the first swipe but still counted it as dirty, which could make the screen
+  // look clean while an almost-invisible stain was still waiting for another pass.
+  const brush = Math.max(30, baseR() * 0.48);
+  let touched = false;
+  for (const sp of splats) {
+    if (sp.dead) continue;
+    const reach = sp.r * 1.6 + brush;
+    if (segDist(sp.x, sp.y, a.x, a.y, b.x, b.y) <= reach) {
+      sp.clean = 1;
+      sp.dead = true;
+      touched = true;
+    }
+  }
+  if (touched) {
+    updateCleanupHint();
+    if (cleanupRemaining() === 0) completeCleanup(true);
+  }
+}
+
 function hit(a, b) {
-  if (paused || (phase !== 'play' && phase !== 'winddown')) return;   // the last falling fruit can still be chopped
+  if (paused) return;
+  if (phase === 'cleanup') { cleanMess(a, b); return; }
+  if (phase !== 'play') return;
   const moved = Math.hypot(b.x - a.x, b.y - a.y) > 2;
   if (dog) { const s = dogSpot(dog); if (segDist(s.x, s.y, a.x, a.y, b.x, b.y) <= s.r) boopDog(); }   // the dog gets a boop, never a chop
   for (const p of pieces) {
@@ -1369,14 +1492,23 @@ canvas.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') endTr
 canvas.addEventListener('pointercancel', endTrail);
 canvas.addEventListener('pointerleave', endTrail);
 
-// Stop the page from scrolling, zooming or popping a menu while playing
+// Stop the web page itself from scrolling, zooming, selecting or reacting to browser multi-touch gestures while playing.
+// iOS system gestures (Home/app switching from screen edges) are outside a web page's control; Guided Access is the reliable fix for those.
 game.addEventListener('touchstart', e => { if (e.target === canvas) e.preventDefault(); }, { passive: false });
 game.addEventListener('touchmove', e => { if (!e.target.closest('.card')) e.preventDefault(); }, { passive: false });   // cards may scroll on short screens
-game.addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('gesturestart', e => e.preventDefault());
-document.addEventListener('dblclick', e => e.preventDefault());
-// Any finished tap or key press is a chance to wake the audio back up (iPad suspends it when you leave the page)
-for (const ev of ['pointerup', 'touchend', 'keydown']) window.addEventListener(ev, ensureAudio, { passive: true });
+document.addEventListener('touchstart', e => {
+  if (e.touches.length > 1 && !e.target.closest('.card') && !e.target.closest('.pin-card')) e.preventDefault();
+}, { passive: false, capture: true });
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1 && !e.target.closest('.card') && !e.target.closest('.pin-card')) e.preventDefault();
+}, { passive: false, capture: true });
+window.addEventListener('contextmenu', e => { if (e.target === canvas) e.preventDefault(); });
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+
+// Start/resume Web Audio as early as possible from a real user gesture. This is especially important on iPhone/iPad Safari and PWAs.
+for (const ev of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(ev, ensureAudio, { passive: true, capture: true });
+window.addEventListener('fruitchop-pin-unlocked', ensureAudio);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureAudio(); });
 
 /* ============================================================
    UPDATE + DRAW (runs every frame)
@@ -1384,14 +1516,17 @@ for (const ev of ['pointerup', 'touchend', 'keydown']) window.addEventListener(e
 function update(dt) {
   const g = TUNE.gravity * H;
 
-  // Countdown, only when a time limit is set. At zero we stop tossing, let the fruit already
-  // in the air finish (so nothing vanishes mid-swipe), then show the All done card.
+  // Timed rounds switch immediately into the clean-up mini-game at zero. No menu or play-again button interrupts it.
   if (phase === 'play' && limitSec > 0) {
     timeLeft -= dt;
-    if (timeLeft <= 0) { timeLeft = 0; phase = 'winddown'; windT = 0; }
-    showTime();
+    if (timeLeft <= 0) { timeLeft = 0; showTime(); startCleanup(); }
+    else showTime();
   }
-  if (phase === 'winddown') { windT += dt; if (!wholeCount() || windT > 4) finish(); }
+  if (phase === 'cleanup' && !cleanupDone) {
+    const left = Math.max(0, (cleanupDeadline - performance.now()) / 1000);
+    showCleanupTime(left);
+    if (left <= 0) completeCleanup(false);
+  }
 
   if (phase === 'attract' || phase === 'play') {
     spawnTimer -= dt;
@@ -1404,16 +1539,16 @@ function update(dt) {
     p.vy += g * (p.depth ? 1.2 : 1) * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
     if (p.vy > 0 && p.y > H + p.r * 1.8) p.dead = true;   // fell back off the bottom: no penalty, just gone
   }
-  for (const s of splats) {   // stains age, their drips run down, then they are removed once fully faded
-    s.age += dt; if (s.age > s.life) s.dead = true;
-    for (const d of s.drips) d.len = Math.min(d.max, d.len + d.v * dt);
+  for (const s of splats) {   // During clean-up, stains stay put until a finger wipes them away.
+    if (phase !== 'cleanup' && phase !== 'cleanupThanks') { s.age += dt; if (s.age > s.life) s.dead = true; }
+    for (const d of s.drips) if (phase !== 'cleanup') d.len = Math.min(d.max, d.len + d.v * dt);
   }
   for (const d of drops) { d.life += dt; d.vy += g * 1.5 * dt; d.x += d.vx * dt; d.y += d.vy * dt; if (d.life > d.max) d.dead = true; }
   for (const s of stars) { s.life += dt; s.vy += g * 1.2 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.rot += s.vr * dt; if (s.y > H + 60 || s.life > 3) s.dead = true; }
   for (const fl of flashes) { fl.life += dt; if (fl.life > 0.18) fl.dead = true; }
   for (const c of clouds) { c.x += c.v * dt; if (c.x - c.s * 2 > W) c.x = -c.s * 2; }
   if (shake > 0) shake -= dt;
-  updateDog(dt);
+  if (phase !== 'cleanup' && phase !== 'cleanupThanks') updateDog(dt);
 
   for (const list of [pieces, splats, drops, stars, flashes])
     for (let i = list.length - 1; i >= 0; i--) if (list[i].dead) list.splice(i, 1);
@@ -1484,11 +1619,29 @@ function draw(t) {
     }
   }
 
-  // The mess: stains sit behind the fruit, pop in, drip, then fade over the last part of their life
+  // The mess: stains sit behind the fruit, pop in, drip, then fade over the last part of their life.
+  // During clean-up they are deliberately larger, fully opaque, and ringed so none can hide in a busy background.
   c.lineCap = 'round';
   for (const sp of splats) {
-    const fade = clamp((sp.life - sp.age) / (sp.life * 0.45), 0, 1), k = sp.r * 1.6 * Math.min(1, 0.55 + sp.age / 0.12 * 0.45);
-    c.globalAlpha = 0.88 * fade; c.strokeStyle = sp.color;
+    if (sp.dead) continue;
+    const cleaning = phase === 'cleanup';
+    const fade = (cleaning || phase === 'cleanupThanks') ? 1 : clamp((sp.life - sp.age) / (sp.life * 0.45), 0, 1);
+    const wipe = 1 - (sp.clean || 0);
+    const boost = cleaning ? 1.22 : 1;
+    const k = sp.r * 1.6 * Math.min(1, 0.55 + sp.age / 0.12 * 0.45) * (0.82 + wipe * 0.18) * boost;
+    if (cleaning) {
+      const pulse = 4 + Math.sin(t * 4 + sp.x * 0.01) * 2;
+      c.save();
+      c.globalAlpha = 0.95;
+      c.strokeStyle = 'rgba(36,59,94,.78)';
+      c.lineWidth = Math.max(8, sp.r * 0.13);
+      c.beginPath(); c.arc(sp.x, sp.y, Math.max(20, k * 0.72) + pulse, 0, TAU); c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,.98)';
+      c.lineWidth = Math.max(4, sp.r * 0.065);
+      c.beginPath(); c.arc(sp.x, sp.y, Math.max(20, k * 0.72) + pulse, 0, TAU); c.stroke();
+      c.restore();
+    }
+    c.globalAlpha = (cleaning ? 1 : 0.88) * fade * wipe; c.strokeStyle = sp.color;
     for (const d of sp.drips) { if (d.len < 1) continue; c.lineWidth = d.w; c.beginPath(); c.moveTo(sp.x + d.dx, sp.y); c.lineTo(sp.x + d.dx, sp.y + sp.r * 0.5 + d.len); c.stroke(); }
     c.save(); c.translate(sp.x, sp.y); c.rotate(sp.rot); c.drawImage(sp.img, -k, -k, 2 * k, 2 * k); c.restore();
   }
@@ -1526,7 +1679,8 @@ function draw(t) {
     while (tr.pts.length && tr.pts[0].t < cut) tr.pts.shift();
     if (!tr.pts.length) { if (tr.ended) trails.delete(id); continue; }
     const p = tr.pts, n = p.length;
-    for (const [col, extra] of [['rgba(255,212,71,.6)', 8], ['#ffffff', 0]]) {
+    const trailColors = phase === 'cleanup' ? [['rgba(116,200,242,.55)', 12], ['rgba(255,255,255,.95)', 2]] : [['rgba(255,212,71,.6)', 8], ['#ffffff', 0]];
+    for (const [col, extra] of trailColors) {
       c.strokeStyle = col;
       for (let i = 1; i < n; i++) {
         c.lineWidth = 3 + (i / (n - 1 || 1)) * wide + extra;
@@ -1552,6 +1706,8 @@ const startOverlay = $('startOverlay'), menuOverlay = $('menuOverlay'), gear = $
 const soundBtn = $('soundBtn'), fullBtn = $('fullBtn'), blueDogBtn = $('blueDogBtn'), backgroundGroup = $('backgroundGroup');
 
 const doneOverlay = $('doneOverlay'), timePill = $('timePill'), limitSeg = $('limitSeg'), backgroundSeg = $('backgroundSeg');
+const cleanupBanner = $('cleanupBanner'), cleanupClock = $('cleanupClock'), cleanupMessage = $('cleanupMessage');
+const cleanupTitle = $('cleanupTitle'), cleanupText = $('cleanupText'), cleanupHint = $('cleanupHint');
 const customRow = $('customRow'), customInput = $('customMin'), startLimit = $('startLimit');
 
 /* ---- Time limit ----
@@ -1564,7 +1720,7 @@ try {
 } catch (e) {}
 
 function showTime() {   // countdown pill; only touches the page when the visible second changes
-  const on = limitSec > 0 && (phase === 'play' || phase === 'winddown');
+  const on = limitSec > 0 && phase === 'play';
   if (timePill.hidden === on) timePill.hidden = !on;
   if (!on) { shownSec = -1; return; }
   const s = Math.ceil(timeLeft); if (s === shownSec) return; shownSec = s;
@@ -1578,7 +1734,7 @@ function applyLimit(changed) {
   startLimit.hidden = limitSec === 0; startLimit.textContent = 'Play time: ' + limitSec / 60 + ' min';
   if (changed) {
     try { localStorage.setItem('fruitchop.limit', JSON.stringify({ mode: limitMode, custom: customMin })); } catch (e) {}
-    if (phase === 'play' || phase === 'winddown') { phase = 'play'; timeLeft = limitSec; }   // a new choice restarts the countdown
+    if (phase === 'play') timeLeft = limitSec;   // a new choice restarts the countdown
   }
   shownSec = -1; showTime();
 }
@@ -1630,21 +1786,75 @@ blueDogBtn.addEventListener('click', () => {
   showBackgroundChoice();
 });
 
+function showCleanupTime(left) {
+  const s = Math.ceil(left);
+  cleanupClock.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function startCleanup() {
+  if (phase === 'cleanup' || phase === 'cleanupThanks') return;
+  phase = 'cleanup'; cleanupDone = false; cleanupDeadline = performance.now() + 3 * 60 * 1000;
+  // The play round ends right now. Leave only the colorful mess and the background to clean.
+  pieces.length = 0; drops.length = 0; flashes.length = 0; stars.length = 0; dog = null; trails.clear();
+
+  // Keep clean-up finite and obvious. Very old games can have lots of overlapping stains, so use at most
+  // 24 of the biggest current splashes. Every target is enlarged a little and moved fully into the safe
+  // visible play area so there can never be a hidden/off-screen splash preventing completion.
+  if (splats.length > 24) {
+    splats.sort((a, b) => b.r - a.r);
+    splats.length = 24;
+  }
+  const minR = Math.max(30, baseR() * 0.58);
+  const maxR = Math.max(minR, baseR() * 1.45);
+  const safeTop = clamp(H * 0.17, 115, 175);
+  const safeBottom = Math.max(38, H * 0.055);
+  for (const sp of splats) {
+    sp.dead = false; sp.clean = 0; sp.age = Math.min(sp.age, sp.life * 0.08);
+    sp.r = clamp(Math.max(sp.r, minR), minR, maxR);
+    const side = clamp(sp.r * 1.2, 42, Math.max(42, W * 0.18));
+    sp.x = clamp(sp.x, side, Math.max(side, W - side));
+    sp.y = clamp(sp.y, safeTop, Math.max(safeTop, H - safeBottom));
+  }
+
+  doneOverlay.hidden = true; startOverlay.hidden = true; menuOverlay.hidden = true; paused = false;
+  gear.hidden = true; gearHint.hidden = true; timePill.hidden = true;
+  cleanupMessage.hidden = true; cleanupBanner.hidden = false; showCleanupTime(180); updateCleanupHint();
+  // If the last stains happened to fade just before zero, still give the child the successful clean-up ending.
+  if (!splats.length) setTimeout(() => { if (phase === 'cleanup') completeCleanup(true); }, 250);
+}
+
+function completeCleanup(allClean) {
+  if (cleanupDone || phase !== 'cleanup') return;
+  cleanupDone = true; phase = 'cleanupThanks'; trails.clear(); cleanupBanner.hidden = true;
+  if (allClean) {
+    cleanupTitle.textContent = 'All clean!';
+    cleanupText.textContent = 'Great job! Thank you for cleaning up.';
+    playCheer(); starBurst();
+  } else {
+    cleanupTitle.textContent = 'Clean-up time is over!';
+    cleanupText.textContent = 'Thank you for helping clean up.';
+  }
+  cleanupMessage.hidden = false;
+  setTimeout(async () => {
+    if (phase !== 'cleanupThanks') return;
+    cleanupMessage.hidden = true;
+    const msg = allClean ? 'All clean! Enter the family PIN to play again.' : 'Clean-up time is over. Enter the family PIN to play again.';
+    if (window.FruitChopPin) {
+      if (await window.FruitChopPin.require(msg)) beginRound(true);
+    } else beginRound(true);
+  }, 2400);
+}
+
 function beginRound(freshScore) {
   ensureAudio();
   const wasAttract = phase === 'attract';
   if (freshScore) setScore(0, true);
   if (blueDogMode && backgroundMode === 'random' && !wasAttract) selectBackgroundForRound(true);
-  phase = 'play'; timeLeft = limitSec; pieces.length = 0; spawnTimer = 0.3; tossCount = 0; nextRainbow = 4; dog = null; dogTimer = rand(8, 14);
-  startOverlay.hidden = true; doneOverlay.hidden = true;
+  phase = 'play'; cleanupDone = false; cleanupDeadline = 0; timeLeft = limitSec; pieces.length = 0; splats.length = 0; spawnTimer = 0.3; tossCount = 0; nextRainbow = 4; dog = null; dogTimer = rand(8, 14);
+  startOverlay.hidden = true; doneOverlay.hidden = true; cleanupBanner.hidden = true; cleanupMessage.hidden = true; gear.hidden = false;
   shownSec = -1; showTime();
 }
-function finish() {   // time is up
-  phase = 'done'; showTime(); trails.clear();
-  $('doneText').textContent = 'You made ' + score + (score === 1 ? ' chop.' : ' chops.');
-  doneOverlay.hidden = false;
-  playCheer(); starBurst();
-}
+function finish() { startCleanup(); }   // legacy alias; timed rounds now go directly to clean-up
 
 // Press-and-hold helper (0.7s) so a toddler's taps can't trigger grown-up buttons. Keyboard Enter/Space works straight away.
 function holdButton(el, onDone, onTap) {
@@ -1659,9 +1869,11 @@ function holdButton(el, onDone, onTap) {
 }
 
 $('playBtn').addEventListener('click', () => beginRound(false));
-holdButton($('againBtn'), () => beginRound(true));
+$('againBtn').addEventListener('click', async () => {
+  if (window.FruitChopPin && await window.FruitChopPin.require('Enter the family PIN to play again.')) beginRound(true);
+});
 
-function openMenu() { paused = true; menuOverlay.hidden = false; $('closeBtn').focus(); }
+function openMenu() { if (phase === 'cleanup' || phase === 'cleanupThanks') return; paused = true; menuOverlay.hidden = false; $('closeBtn').focus(); }
 function closeMenu() { paused = false; menuOverlay.hidden = true; }
 $('closeBtn').addEventListener('click', closeMenu);
 $('resetBtn').addEventListener('click', () => setScore(0, true));
