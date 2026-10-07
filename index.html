@@ -637,7 +637,7 @@ const FRUITS = [
 // The rainbow melon: a big, obviously special fruit that bursts into a screen-wide mess. It is not a bomb:
 // nothing bad happens, it never ends the game, it is just the messiest thing to chop.
 const RAINBOW = {
-  size: 1.5, juice: '#ff5a6e', colors: ['#f0364b', '#ff9d2e', '#ffd93b', '#58c247', '#4aa8ff', '#a66bf0'],
+  size: 1.2, juice: '#ff5a6e', colors: ['#f0364b', '#ff9d2e', '#ffd93b', '#58c247', '#4aa8ff', '#a66bf0'],
   shape(c, r) { c.beginPath(); c.arc(0, 0, r, 0, TAU); },
   skin(c, r) {
     c.save(); this.shape(c, r); c.clip();
