@@ -367,6 +367,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
         <div class="row" id="limitSeg" role="group" aria-labelledby="limitLabel">
           <button class="btn sm" type="button" data-limit="0">No limit</button>
           <button class="btn sm" type="button" data-limit="1">1 min</button>
+          <button class="btn sm" type="button" data-limit="3">3 min</button>
           <button class="btn sm" type="button" data-limit="5">5 min</button>
           <button class="btn sm" type="button" data-limit="10">10 min</button>
           <button class="btn sm" type="button" data-limit="custom">Custom</button>
@@ -375,7 +376,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
           <label for="customMin">Minutes</label>
           <input id="customMin" type="number" inputmode="numeric" min="1" max="180" step="1" value="15">
         </div>
-        <p class="note">Picking a time restarts the countdown. When time runs out, clean-up starts immediately: swipe away the splashes, then a grown-up enters the family PIN to play again.</p>
+        <p class="note">Timer changes apply to the next round, so the current countdown cannot be reset accidentally. When time runs out, clean-up starts immediately: swipe away the splashes, then a grown-up enters the family PIN to play again.</p>
       </div>
       <div class="group" id="backgroundGroup" hidden>
         <div class="label" id="backgroundLabel">Background</div>
@@ -417,7 +418,7 @@ html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-
 'use strict';
 
 /* Version: CalVer + daily build number. Bump on every code change. Shown in the grown-ups menu. */
-const VERSION = 'v2026.10.06.03';
+const VERSION = 'v2026.10.07.01';
 
 /* ============================================================
    TUNING: the knobs worth touching if the game feels too fast
@@ -458,7 +459,7 @@ let W = 0, H = 0, dpr = 1;
 let score = 0, paused = false, spawnTimer = 0.4;
 // phase: 'attract' (start card) -> 'play' -> 'cleanup' -> 'cleanupThanks'. Timed rounds go straight to clean-up at zero.
 let phase = 'attract';
-let limitSec = 0, timeLeft = 0, shownSec = -1;   // limitSec 0 means no time limit
+let limitSec = 0, activeLimitSec = 0, timeLeft = 0, shownSec = -1;   // limitSec is the next-round setting; activeLimitSec is locked for the current round
 let cleanupDeadline = 0, cleanupDone = false;   // clean-up lasts at most 3 real-time minutes
 const pieces = [];   // everything in the air: whole fruit and the bits they get chopped into
 const splats = [];   // juice stains left on the scene, oldest first
@@ -1505,6 +1506,16 @@ document.addEventListener('touchmove', e => {
 window.addEventListener('contextmenu', e => { if (e.target === canvas) e.preventDefault(); });
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 
+// iOS has a three-finger Undo/Redo gesture. Fruit Chop has no undo feature, so swallow browser undo/redo commands.
+// More importantly, the live round timer is isolated from settings above, so an undo gesture can never restore the full timer.
+document.addEventListener('beforeinput', e => {
+  if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') e.preventDefault();
+}, { capture: true });
+document.addEventListener('keydown', e => {
+  const k = String(e.key || '').toLowerCase();
+  if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) e.preventDefault();
+}, { capture: true });
+
 // Start/resume Web Audio as early as possible from a real user gesture. This is especially important on iPhone/iPad Safari and PWAs.
 for (const ev of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(ev, ensureAudio, { passive: true, capture: true });
 window.addEventListener('fruitchop-pin-unlocked', ensureAudio);
@@ -1517,7 +1528,7 @@ function update(dt) {
   const g = TUNE.gravity * H;
 
   // Timed rounds switch immediately into the clean-up mini-game at zero. No menu or play-again button interrupts it.
-  if (phase === 'play' && limitSec > 0) {
+  if (phase === 'play' && activeLimitSec > 0) {
     timeLeft -= dt;
     if (timeLeft <= 0) { timeLeft = 0; showTime(); startCleanup(); }
     else showTime();
@@ -1711,16 +1722,17 @@ const cleanupTitle = $('cleanupTitle'), cleanupText = $('cleanupText'), cleanupH
 const customRow = $('customRow'), customInput = $('customMin'), startLimit = $('startLimit');
 
 /* ---- Time limit ----
-   Default is no limit. The choice is remembered on this device. limitMode is '0', '1', '5', '10' or 'custom'. */
-let limitMode = '0', customMin = 15;
+   Default is 3 minutes. The choice is remembered on this device.
+   v2 uses a fresh preference key so this update actually moves existing installs to the new 3-minute default once. */
+let limitMode = '3', customMin = 15;
 try {
-  const s = JSON.parse(localStorage.getItem('fruitchop.limit') || 'null');
-  if (s && ['0', '1', '5', '10', 'custom'].includes(s.mode)) limitMode = s.mode;
+  const s = JSON.parse(localStorage.getItem('fruitchop.limit.v2') || 'null');
+  if (s && ['0', '1', '3', '5', '10', 'custom'].includes(s.mode)) limitMode = s.mode;
   if (s && Number.isFinite(s.custom)) customMin = clamp(Math.round(s.custom), 1, 180);
 } catch (e) {}
 
 function showTime() {   // countdown pill; only touches the page when the visible second changes
-  const on = limitSec > 0 && phase === 'play';
+  const on = activeLimitSec > 0 && phase === 'play';
   if (timePill.hidden === on) timePill.hidden = !on;
   if (!on) { shownSec = -1; return; }
   const s = Math.ceil(timeLeft); if (s === shownSec) return; shownSec = s;
@@ -1733,8 +1745,8 @@ function applyLimit(changed) {
   customRow.hidden = limitMode !== 'custom';
   startLimit.hidden = limitSec === 0; startLimit.textContent = 'Play time: ' + limitSec / 60 + ' min';
   if (changed) {
-    try { localStorage.setItem('fruitchop.limit', JSON.stringify({ mode: limitMode, custom: customMin })); } catch (e) {}
-    if (phase === 'play') timeLeft = limitSec;   // a new choice restarts the countdown
+    try { localStorage.setItem('fruitchop.limit.v2', JSON.stringify({ mode: limitMode, custom: customMin })); } catch (e) {}
+    // Deliberately do not touch timeLeft during a live round. Timer changes take effect next round only.
   }
   shownSec = -1; showTime();
 }
@@ -1850,7 +1862,7 @@ function beginRound(freshScore) {
   const wasAttract = phase === 'attract';
   if (freshScore) setScore(0, true);
   if (blueDogMode && backgroundMode === 'random' && !wasAttract) selectBackgroundForRound(true);
-  phase = 'play'; cleanupDone = false; cleanupDeadline = 0; timeLeft = limitSec; pieces.length = 0; splats.length = 0; spawnTimer = 0.3; tossCount = 0; nextRainbow = 4; dog = null; dogTimer = rand(8, 14);
+  phase = 'play'; cleanupDone = false; cleanupDeadline = 0; activeLimitSec = limitSec; timeLeft = activeLimitSec; pieces.length = 0; splats.length = 0; spawnTimer = 0.3; tossCount = 0; nextRainbow = 4; dog = null; dogTimer = rand(8, 14);
   startOverlay.hidden = true; doneOverlay.hidden = true; cleanupBanner.hidden = true; cleanupMessage.hidden = true; gear.hidden = false;
   shownSec = -1; showTime();
 }
